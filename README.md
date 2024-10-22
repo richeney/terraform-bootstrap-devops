@@ -46,3 +46,8 @@ azure_devops_create_files          = true
 Note that you can also use organization names as the value for github_owner_name.
 
 Additional variables may be found in variables.tf.
+
+## Known issues
+
+- Destroy will fail for the service endpoint as the federated credential deletion does not propagate in time. Rerun the delete.
+- Destroy does not remove the environment, despite indicating that it has. Remove manually.

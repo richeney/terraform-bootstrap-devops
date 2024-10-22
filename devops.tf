@@ -9,6 +9,27 @@ data "azuredevops_git_repository" "repo" {
 
 locals {
   org_service_url = "https://dev.azure.com/${var.azure_devops_organization_name}"
+
+  environment_name = "prod"
+
+  pipeline_templates = toset(var.azure_devops_create_pipeline ? fileset("pipelines", "terraform*.yamltpl") : [])
+  pipelines          = toset([for template in local.pipeline_templates : trimsuffix(template, "tpl")])
+  helpers            = toset(var.azure_devops_create_pipeline ? fileset("pipelines/helpers", "terraform-*.yaml") : [])
+
+  pipeline_template_vars = {
+    variable_group_name      = var.azure_devops_variable_group_name
+    agent_pool_configuration = "vmImage: 'ubuntu-latest'"
+    service_connection_name  = var.azure_devops_service_connection_name
+    environment_name         = "prod"
+  }
+
+  file_templates = toset(var.azure_devops_create_files ? fileset("files", "*.tftpl") : [])
+  files          = toset([for template in local.file_templates : trimsuffix(template, "tpl")])
+
+  file_template_vars = {
+    subscription_id = var.subscription_id
+  }
+
 }
 
 resource "azuredevops_variable_group" "terraform" {
@@ -50,6 +71,7 @@ resource "azuredevops_serviceendpoint_azurerm" "terraform" {
 
 resource "azurerm_federated_identity_credential" "terraform" {
   name                = substr(replace("${var.azure_devops_organization_name}--${var.azure_devops_project_name}--${var.azure_devops_service_connection_name}", " ", ""), 0, 120)
+  depends_on          = [azuredevops_serviceendpoint_azurerm.terraform]
   resource_group_name = azurerm_resource_group.terraform.name
   parent_id           = azurerm_user_assigned_identity.terraform.id
   audience            = ["api://AzureADTokenExchange"]
@@ -57,22 +79,77 @@ resource "azurerm_federated_identity_credential" "terraform" {
   issuer              = azuredevops_serviceendpoint_azurerm.terraform.workload_identity_federation_issuer
 }
 
-// Optional pipeline file in the repository
+// Optional pipeline files in the repository
+
+resource "azuredevops_environment" "terraform" {
+  for_each   = toset(var.azure_devops_create_pipeline ? [local.environment_name] : [])
+  name       = each.key
+  project_id = data.azuredevops_project.project.id
+}
+
+resource "azuredevops_git_repository_file" "pipeline" {
+  for_each = local.pipeline_templates
+
+  repository_id       = data.azuredevops_git_repository.repo.id
+  file                = "pipelines/${trimsuffix(each.key, "tpl")}"
+  branch              = "refs/heads/main"
+  commit_message      = "Initial commit"
+  overwrite_on_create = true
+
+  content = templatefile("${path.module}/pipelines/${each.key}", local.pipeline_template_vars)
+}
+
+resource "azuredevops_git_repository_file" "helpers" {
+  for_each = local.helpers
+
+  repository_id       = data.azuredevops_git_repository.repo.id
+  file                = "pipelines/helpers/${each.key}"
+  branch              = "refs/heads/main"
+  commit_message      = "Initial commit"
+  overwrite_on_create = true
+
+  content = file("pipelines/helpers/${each.key}")
+}
+
+resource "azuredevops_build_definition" "terraform" {
+  for_each   = local.pipelines
+  project_id = data.azuredevops_project.project.id
+  name       = each.key
+
+  ci_trigger {
+    use_yaml = true
+  }
+
+  repository {
+    repo_type   = "TfsGit"
+    repo_id     = data.azuredevops_git_repository.repo.id
+    branch_name = "refs/heads/main"
+    yml_path    = "pipelines/${each.key}"
+  }
+}
+
+resource "azuredevops_pipeline_authorization" "environment" {
+  for_each = local.pipelines
+
+  project_id  = data.azuredevops_project.project.id
+  pipeline_id = azuredevops_build_definition.terraform[each.key].id
+  resource_id = azuredevops_environment.terraform[local.environment_name].id
+  type        = "environment"
+}
+
+resource "azuredevops_pipeline_authorization" "service_connection" {
+  for_each = local.pipelines
+
+  project_id  = data.azuredevops_project.project.id
+  pipeline_id = azuredevops_build_definition.terraform[each.key].id
+  resource_id = azuredevops_serviceendpoint_azurerm.terraform.id
+  type        = "endpoint"
+}
 
 // Optional set of Terraform files in the repository - shame there is no equivalent of template_dir
 
 resource "azuredevops_git_repository_file" "terraform" {
-  for_each = var.azure_devops_create_files ? {
-    "main.tf" : {
-      source = "files/main.tftpl"
-      vars   = { subscription_id = var.subscription_id }
-    },
-    "provider.tf" : {
-      source = "files/provider.tftpl"
-      vars   = {}
-    },
-
-  } : {}
+  for_each = local.files
 
   repository_id       = data.azuredevops_git_repository.repo.id
   file                = each.key
@@ -80,5 +157,5 @@ resource "azuredevops_git_repository_file" "terraform" {
   commit_message      = "Initial commit"
   overwrite_on_create = false
 
-  content = templatefile("${path.module}/files/main.tftpl", { subscription_id = var.subscription_id })
+  content = templatefile("${path.module}/files/${each.key}tpl", local.file_template_vars)
 }

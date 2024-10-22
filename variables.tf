@@ -86,7 +86,7 @@ variable "azure_devops_service_connection_name" {
 variable "azure_devops_create_pipeline" {
   description = "Create a pipeline in Azure DevOps."
   type        = bool
-  default     = false
+  default     = true
 }
 
 variable "azure_devops_create_files" {
