@@ -92,5 +92,5 @@ variable "azure_devops_create_pipeline" {
 variable "azure_devops_create_files" {
   description = "Create a set of Terraform files in Azure DevOps."
   type        = bool
-  default     = true
+  default     = false
 }

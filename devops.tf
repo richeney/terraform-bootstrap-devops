@@ -12,10 +12,8 @@ locals {
 
   environment_name = "prod"
 
-  pipeline_templates = toset(var.azure_devops_create_pipeline ? fileset("pipelines", "terraform*.yamltpl") : [])
+  pipeline_templates = toset(var.azure_devops_create_pipeline ? fileset("${path.module}/pipelines", "terraform*.yamltpl") : [])
   pipelines          = toset([for template in local.pipeline_templates : trimsuffix(template, "tpl")])
-  helpers            = toset(var.azure_devops_create_pipeline ? fileset("pipelines/helpers", "terraform-*.yaml") : [])
-
   pipeline_template_vars = {
     variable_group_name      = var.azure_devops_variable_group_name
     agent_pool_configuration = "vmImage: 'ubuntu-latest'"
@@ -23,9 +21,8 @@ locals {
     environment_name         = "prod"
   }
 
-  file_templates = toset(var.azure_devops_create_files ? fileset("files", "*.tftpl") : [])
+  file_templates = toset(var.azure_devops_create_files ? fileset("${path.module}/files", "*.tftpl") : [])
   files          = toset([for template in local.file_templates : trimsuffix(template, "tpl")])
-
   file_template_vars = {
     subscription_id = var.subscription_id
   }
@@ -97,18 +94,6 @@ resource "azuredevops_git_repository_file" "pipeline" {
   overwrite_on_create = true
 
   content = templatefile("${path.module}/pipelines/${each.key}", local.pipeline_template_vars)
-}
-
-resource "azuredevops_git_repository_file" "helpers" {
-  for_each = local.helpers
-
-  repository_id       = data.azuredevops_git_repository.repo.id
-  file                = "pipelines/helpers/${each.key}"
-  branch              = "refs/heads/main"
-  commit_message      = "Initial commit"
-  overwrite_on_create = true
-
-  content = file("pipelines/helpers/${each.key}")
 }
 
 resource "azuredevops_build_definition" "terraform" {

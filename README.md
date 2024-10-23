@@ -17,8 +17,6 @@ Example bootstrap for Azure DevOps using federated workload identities.
 
 This is short-lived and is only needed for the duration of the bootstrap itself. Once the bootstrap is completed then you may revoke the token.
 
-**REFINE THIS**
-
 1. You should still be logged into [dev.azure.com](https://dev.azure.com)
 1. Click the `User settings` icon in the top right and select `Personal access tokens`.
 1. Click `+ New Token`.
@@ -28,6 +26,8 @@ This is short-lived and is only needed for the duration of the bootstrap itself.
 1. Click `Create`.
 1. Copy the token and save it somewhere safe.
 1. Click `Close`.
+
+> TODO - Refine this.
 
 ## Create a terraform.tfvars
 
@@ -42,8 +42,6 @@ azure_devops_personal_access_token = "redacted"
 azure_devops_create_pipeline       = true
 azure_devops_create_files          = true
 ```
-
-Note that you can also use organization names as the value for github_owner_name.
 
 Additional variables may be found in variables.tf.
 
